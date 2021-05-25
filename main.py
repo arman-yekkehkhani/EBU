@@ -4,8 +4,9 @@
 __author__ = 'arman-yekkehkhani'  # EBU Implementation
 
 import argparse
-import numpy as np
 import time
+
+import numpy as np
 import torch
 import torch.optim as optim
 import wandb
@@ -19,18 +20,20 @@ from lib.replay_buffer import ExperienceBuffer
 
 DEFAULT_ENV_NAME = "PongNoFrameskip-v4"
 MEAN_REWARD_BOUND = 15
+BETA = 0.5
 METHOD = 'dqn'
 
 GAMMA = 0.99
 BATCH_SIZE = 32
-REPLAY_SIZE = 200_000
-LEARNING_RATE = 0.00001
+REPLAY_SIZE = 1_000_000
+LEARNING_RATE = 0.00025
 SYNC_TARGET_FRAMES = 10_000
 REPLAY_START_SIZE = 50_000
+UPDATE_FREQ = 4
 
-EPSILON_DECAY_LAST_FRAME = 500_000
+EPSILON_DECAY_LAST_FRAME = 1_000_000
 EPSILON_START = 1.0
-EPSILON_FINAL = 0.02
+EPSILON_FINAL = 0.1
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
@@ -41,21 +44,26 @@ if __name__ == "__main__":
                         help="Mean reward boundary for stop of training, default=%.2f" % MEAN_REWARD_BOUND)
     parser.add_argument("--method", type=str, default=METHOD,
                         help="Methods: dqn(default) or ebu")
+    parser.add_argument("--beta", type=float, default=BETA, help="Diffusion factor")
 
     args = parser.parse_args()
     device = torch.device("cuda" if args.cuda else "cpu")
     print(device)
 
+    # FIXME: use efficient_env instead of make_env
     env = wrappers.make_env(args.env)
     env.seed(123)
 
     method = args.method
     print(args.env)
     print(method)
+    if args.beta:
+        BETA = args.beta
 
     net = dqn_model.DQN(env.observation_space.shape, env.action_space.n).to(device)
     tgt_net = dqn_model.DQN(env.observation_space.shape, env.action_space.n).to(device)
     wandb.init(project=args.env, name=method, config={"gamma": GAMMA,
+                                                      "beta": BETA,
                                                       "batch size": BATCH_SIZE,
                                                       "replay size": REPLAY_SIZE,
                                                       "replay start size": REPLAY_START_SIZE,
@@ -112,12 +120,12 @@ if __name__ == "__main__":
         if frame_idx % SYNC_TARGET_FRAMES == 0:
             tgt_net.load_state_dict(net.state_dict())
 
-        if method == 'dqn':
+        if frame_idx % UPDATE_FREQ == 0 and method == 'dqn':
             optimizer.zero_grad()
             batch = buffer.sample(BATCH_SIZE)
             loss_t = calc_loss(batch, net, tgt_net, GAMMA, device=device)
             loss_t.backward()
             optimizer.step()
-        if method == 'ebu':
-            ebu_trainer.ebu_train_step(net, tgt_net, env.action_space.n, buffer, BATCH_SIZE, device, beta=0.5,
-                                       gamma=GAMMA)
+        if frame_idx % UPDATE_FREQ == 0 and method == 'ebu':
+            ebu_trainer.ebu_train_step(net, tgt_net, env.action_space.n, buffer, BATCH_SIZE,
+                                       device, beta=BETA, gamma=GAMMA)
