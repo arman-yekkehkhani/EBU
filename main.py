@@ -25,15 +25,15 @@ METHOD = 'dqn'
 
 GAMMA = 0.99
 BATCH_SIZE = 32
-REPLAY_SIZE = 1_000_000
-LEARNING_RATE = 0.00025
-SYNC_TARGET_FRAMES = 10_000
-REPLAY_START_SIZE = 50_000
-UPDATE_FREQ = 4
+REPLAY_SIZE = 200_000
+LEARNING_RATE = 0.0001
+SYNC_TARGET_FRAMES = 1_000
+REPLAY_START_SIZE = 10_000
+UPDATE_FREQ = 1
 
-EPSILON_DECAY_LAST_FRAME = 1_000_000
+EPSILON_DECAY_LAST_FRAME = 100_000
 EPSILON_START = 1.0
-EPSILON_FINAL = 0.1
+EPSILON_FINAL = 0.02
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
@@ -51,7 +51,7 @@ if __name__ == "__main__":
     print(device)
 
     # FIXME: use efficient_env instead of make_env
-    env = wrappers.make_env(args.env)
+    env = wrappers.efficient_env(args.env)
     env.seed(123)
 
     method = args.method

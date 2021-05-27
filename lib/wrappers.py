@@ -161,13 +161,13 @@ class MyBufferWrapper(gym.ObservationWrapper):
 
     def reset(self):
         shape = self.observation_space.shape
-        self.buffer = collections.deque([np.zeros(shape[1:], dtype=self.dtype) for _ in range(self.n_steps)],
+        self.buffer = collections.deque([np.zeros((1, *shape[1:]), dtype=self.dtype) for _ in range(self.n_steps)],
                                         maxlen=4)
         return self.observation(self.env.reset())
 
     def observation(self, observation):
         self.buffer.append(observation)
-        return self.buffer
+        return self.buffer.copy()
 
 
 def make_env(env_name):
@@ -227,30 +227,32 @@ if __name__ == "__main__":
 
     game = "PongNoFrameskip-v4"
 
-    env = efficient_env(game)
-    # env = make_env(game)
+    # env = efficient_env(game)
+    env = make_env(game)
     state = env.reset()
     from replay_buffer import ExperienceBuffer
+    from agent import Agent
+    import dqn_model
+    from ebu import EbuTrainer
+    from torch import optim
 
-    rb = ExperienceBuffer(buffer_size=1_000_000)
+    buffer = ExperienceBuffer(100_000)
+    agent = Agent(env, buffer)
+    device = 'cpu'
+    net = dqn_model.DQN(env.observation_space.shape, env.action_space.n).to(device)
+    tgt_net = dqn_model.DQN(env.observation_space.shape, env.action_space.n).to(device)
+    optimizer = optim.Adam(net.parameters(), lr=0.0001)
+    ebu_trainer = EbuTrainer(optimizer)
 
-    t = time.time()
+    import wandb; wandb.init(name="test rb", project="rb dev")
     for i in range(200_000):
-        done_reward = None
-        action = env.action_space.sample()
-        new_state, reward, is_done, _ = env.step(action)
+        reward = agent.play_step(net, epsilon=1, device=device)
 
-        exp = Experience(state, action, reward, is_done, new_state)
-        rb.append(exp)
-        state = new_state
-        if is_done:
-            state = env.reset()
+        if len(buffer) < 10_000:
+            continue
 
-        if i % 10_000 == 9_999:
-            rb.sample(32)
-            rb.sample_episode(32)
-            # print(get_size(rb))
-            print(time.time() - t)
-            t = time.time()
+        loss = ebu_trainer.ebu_train_step(net, tgt_net, env.action_space.n, buffer, 32,
+                                   device, beta=0.5, gamma=0.99)
+        wandb.log({'loss': loss}, step=i)
 
 

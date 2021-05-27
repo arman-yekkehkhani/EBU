@@ -57,9 +57,8 @@ class ExperienceBuffer:
         actions, rewards, dones = list(map(lambda arr: np.take(arr, indices, axis=0), [self.actions,
                                                                                        self.rewards,
                                                                                        self.done]))
-        # FIXME: fix for efficient env, use np.vstack(self.state[i])
-        states = np.stack([self.states[i] for i in indices]).astype(np.float32) / 255.
-        next_states = np.stack([self.next_states[i] for i in indices]).astype(np.float32) / 255.
+        states = np.stack([np.vstack(self.states[i]) for i in indices]).astype(np.float32) / 255.
+        next_states = np.stack([np.vstack(self.next_states[i]) for i in indices]).astype(np.float32) / 255.
 
         return states, actions, rewards, dones, next_states
 
@@ -98,8 +97,7 @@ class ExperienceBuffer:
         actions = np.array([self.actions[i] for i in indice_array])
         dones = np.array([self.done[i] for i in indice_array])
 
-        # FIXME: fix for efficient env, use np.vstack(self.state[i])
-        states = np.array([self.states[i] for i in indice_array]).astype(np.float32) / 255.
-        next_states = np.array([self.next_states[i] for i in indice_array]).astype(np.float32) / 255.
+        states = np.array([np.vstack(self.states[i]) for i in indice_array]).astype(np.float32) / 255.
+        next_states = np.array([np.vstack(self.next_states[i]) for i in indice_array]).astype(np.float32) / 255.
 
         return batchnum, states, actions, rewards, dones, next_states
