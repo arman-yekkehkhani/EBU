@@ -5,8 +5,6 @@ import gym
 import gym.spaces
 import numpy as np
 
-from lib.agent import Experience
-
 
 class FireResetEnv(gym.Wrapper):
     def __init__(self, env=None):
@@ -58,6 +56,9 @@ class MaxAndSkipEnv(gym.Wrapper):
 
 
 class ProcessFrame84(gym.ObservationWrapper):
+    """
+        :return 84x84 cropped grayscale frame
+    """
     def __init__(self, env=None):
         super(ProcessFrame84, self).__init__(env)
         self.observation_space = gym.spaces.Box(low=0, high=255, shape=(84, 84, 1), dtype=np.uint8)
@@ -79,43 +80,13 @@ class ProcessFrame84(gym.ObservationWrapper):
         x_t = np.reshape(x_t, [84, 84, 1])
         return x_t.astype(np.uint8)
 
-class MyProcessFrame84(gym.ObservationWrapper):
-    def __init__(self, env=None):
-        super(MyProcessFrame84, self).__init__(env)
-        self.observation_space = gym.spaces.Box(low=0, high=255, shape=(84, 84), dtype=np.uint8)
 
-    def observation(self, obs):
-        return ProcessFrame84.process(obs)
-
-    @staticmethod
-    def process(frame):
-        if frame.size == 210 * 160 * 3:
-            img = np.reshape(frame, [210, 160, 3]).astype(np.float32)
-        elif frame.size == 250 * 160 * 3:
-            img = np.reshape(frame, [250, 160, 3]).astype(np.float32)
-        else:
-            assert False, "Unknown resolution."
-        img = img[:, :, 0] * 0.299 + img[:, :, 1] * 0.587 + img[:, :, 2] * 0.114
-        resized_screen = cv2.resize(img, (84, 110), interpolation=cv2.INTER_AREA)
-        x_t = resized_screen[18:102, :]
-        x_t = np.reshape(x_t, [84, 84])
-        return x_t.astype(np.uint8)
-
-
-class ImageToPyTorch(gym.ObservationWrapper):
+class ImageToPytorch(gym.ObservationWrapper):
+    """
+        convert to channel first
+    """
     def __init__(self, env):
-        super(ImageToPyTorch, self).__init__(env)
-        old_shape = self.observation_space.shape
-        self.observation_space = gym.spaces.Box(low=0.0, high=1.0, shape=(old_shape[-1], old_shape[0], old_shape[1]),
-                                                dtype=np.float32)
-
-    def observation(self, observation):
-        return np.moveaxis(observation, 2, 0)
-
-
-class MyImageToPytorch(gym.ObservationWrapper):
-    def __init__(self, env):
-        super(MyImageToPytorch, self).__init__(env)
+        super(ImageToPytorch, self).__init__(env)
         old_shape = self.observation_space.shape
         old_low, old_high = self.observation_space.low, self.observation_space.high
         old_type = self.observation_space.dtype
@@ -126,38 +97,17 @@ class MyImageToPytorch(gym.ObservationWrapper):
         return np.moveaxis(observation, 2, 0)
 
 
-class ScaledFloatFrame(gym.ObservationWrapper):
-    def observation(self, obs):
-        return np.array(obs).astype(np.float32) / 255.0
-
-
 class BufferWrapper(gym.ObservationWrapper):
-    def __init__(self, env, n_steps, dtype=np.float32):
-        super(BufferWrapper, self).__init__(env)
-        self.dtype = dtype
-        old_space = env.observation_space
-        self.observation_space = gym.spaces.Box(old_space.low.repeat(n_steps, axis=0),
-                                                old_space.high.repeat(n_steps, axis=0), dtype=dtype)
-
-    def reset(self):
-        self.buffer = np.zeros_like(self.observation_space.low, dtype=self.dtype)
-        return self.observation(self.env.reset())
-
-    def observation(self, observation):
-        self.buffer[:-1] = self.buffer[1:]
-        self.buffer[-1] = observation
-        return self.buffer
-
-
-class MyBufferWrapper(gym.ObservationWrapper):
+    """
+        retains last four frames in a buffer
+    """
     def __init__(self, env, n_steps, dtype=np.uint8):
-        super(MyBufferWrapper, self).__init__(env)
+        super(BufferWrapper, self).__init__(env)
         self.n_steps = n_steps
         self.dtype = dtype
         old_space = env.observation_space
         self.observation_space = gym.spaces.Box(old_space.low.repeat(n_steps, axis=0),
                                                 old_space.high.repeat(n_steps, axis=0), dtype=dtype)
-
 
     def reset(self):
         shape = self.observation_space.shape
@@ -175,84 +125,10 @@ def make_env(env_name):
     env = MaxAndSkipEnv(env)
     env = FireResetEnv(env)
     env = ProcessFrame84(env)
-    env = ImageToPyTorch(env)
+    env = ImageToPytorch(env)
     env = BufferWrapper(env, 4)
-    return ScaledFloatFrame(env)
-
-
-def efficient_env(env_name):
-    env = gym.make(env_name)
-    env = MaxAndSkipEnv(env)
-    env = FireResetEnv(env)
-    env = ProcessFrame84(env)
-    env = MyImageToPytorch(env)
-    env = MyBufferWrapper(env, 4)
     return env
 
 
-# TODO: move axis two to zero, done!
-# TODO: use /255. in other places, ....?
-# TODO: use deque in bufferWrapper, done!
-# TODO: stack deque for further processing, done!
-# TODO: fix observation space, done!
-
-
-import sys
-
-
-def get_size(obj, seen=None):
-    """Recursively finds size of objects"""
-    size = sys.getsizeof(obj)
-    if seen is None:
-        seen = set()
-    obj_id = id(obj)
-    if obj_id in seen:
-        return 0
-    # Important mark as seen *before* entering recursion to gracefully handle
-    # self-referential objects
-    seen.add(obj_id)
-    if isinstance(obj, dict):
-        size += sum([get_size(v, seen) for v in obj.values()])
-        size += sum([get_size(k, seen) for k in obj.keys()])
-    elif hasattr(obj, '__dict__'):
-        size += get_size(obj.__dict__, seen)
-    elif hasattr(obj, '__iter__') and not isinstance(obj, (str, bytes, bytearray)):
-        size += sum([get_size(i, seen) for i in obj])
-    return size
-
-
 if __name__ == "__main__":
-    # import wandb; wandb.init('test_wrapper', project='dev_ebu')
-    import time
-
-    game = "PongNoFrameskip-v4"
-
-    # env = efficient_env(game)
-    env = make_env(game)
-    state = env.reset()
-    from replay_buffer import ExperienceBuffer
-    from agent import Agent
-    import dqn_model
-    from ebu import EbuTrainer
-    from torch import optim
-
-    buffer = ExperienceBuffer(100_000)
-    agent = Agent(env, buffer)
-    device = 'cpu'
-    net = dqn_model.DQN(env.observation_space.shape, env.action_space.n).to(device)
-    tgt_net = dqn_model.DQN(env.observation_space.shape, env.action_space.n).to(device)
-    optimizer = optim.Adam(net.parameters(), lr=0.0001)
-    ebu_trainer = EbuTrainer(optimizer)
-
-    import wandb; wandb.init(name="test rb", project="rb dev")
-    for i in range(200_000):
-        reward = agent.play_step(net, epsilon=1, device=device)
-
-        if len(buffer) < 10_000:
-            continue
-
-        loss = ebu_trainer.ebu_train_step(net, tgt_net, env.action_space.n, buffer, 32,
-                                   device, beta=0.5, gamma=0.99)
-        wandb.log({'loss': loss}, step=i)
-
-
+    pass
