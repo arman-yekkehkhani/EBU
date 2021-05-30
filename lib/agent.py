@@ -11,10 +11,10 @@ class Agent:
         self.env = env
         self.exp_buffer = exp_buffer
         self._reset()
+        self.total_reward = 0.0
 
     def _reset(self):
         self.state = self.env.reset()
-        self.total_reward = 0.0
 
     @torch.no_grad()
     def play_step(self, net, epsilon=0.0, device="cpu"):
@@ -38,6 +38,10 @@ class Agent:
         self.exp_buffer.append(exp)
         self.state = new_state
         if is_done:
-            done_reward = self.total_reward
             self._reset()
+
+        if self.env.was_real_done:
+            done_reward = self.total_reward
+            self.total_reward = 0.0
+
         return done_reward
