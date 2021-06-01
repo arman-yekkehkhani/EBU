@@ -62,7 +62,7 @@ class ExperienceBuffer:
 
         return states, actions, rewards, dones, next_states
 
-    def sample_episode(self, batch_size=32):
+    def sample_episode(self, batch_size):
         """
         Sample a whole episode and fill it with transitions from another episode to make it
         multiple of batch_size

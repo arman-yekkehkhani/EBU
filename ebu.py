@@ -4,18 +4,20 @@ import torch.nn.functional as F
 
 
 class EbuTrainer:
-    def __init__(self, opt):
+    def __init__(self, opts: list, betas):
         self.batch_num = 0
         self.batch_count = 0
-        self.y_ = None
-        self.q_tilde = None
+        self.y_ = [None for _ in betas]
+        self.q_tilde = [None for _ in betas]
         self.actions = None
         self.states = None
-        self.opt = opt
+        self.betas = betas
+        self.opts = opts
         self.criterion = nn.SmoothL1Loss()
+        self.K = len(betas)
 
-    def ebu_train_step(self, model, tgt, num_actions, rb, batch_size, device,
-                       beta=0.5, gamma=0.99):
+    def ebu_train_step(self, models, tgts, num_actions, rb, batch_size, device, gamma=0.99):
+        # TODO: no beta here!
         if self.batch_num == self.batch_count:
 
             self.batch_num, self.states, self.actions, rewards, dones, next_states = rb.sample_episode(batch_size)
@@ -30,47 +32,55 @@ class EbuTrainer:
 
             epi_len = self.batch_num * batch_size
 
-            self.q_tilde = torch.zeros((epi_len, num_actions)).to(device)
-            with torch.no_grad():
-                for i in range(self.batch_num):
-                    s, e = i * batch_size, (i + 1) * batch_size
-                    self.q_tilde[s: e] = tgt(next_states[s: e])
+            for k in range(self.K):
+                self.q_tilde[k] = torch.zeros((epi_len, num_actions)).to(device)
+                with torch.no_grad():
+                    for i in range(self.batch_num):
+                        s, e = i * batch_size, (i + 1) * batch_size
+                        self.q_tilde[k][s: e] = tgts[k](next_states[s: e])
 
-            self.y_ = torch.zeros(epi_len).to(device)
-            for i in range(epi_len - 1, -1, -1):
-                if dones[i]:
-                    self.y_[i] = rewards[i]
-                else:
-                    self.q_tilde[i, self.actions[i + 1]] = beta * self.y_[i + 1] \
-                                                           + (1 - beta) * self.q_tilde[i, self.actions[i + 1]]
-                    self.y_[i] = rewards[i] + gamma * self.q_tilde[i, :].max()
+                self.y_[k] = torch.zeros(epi_len).to(device)
+                for i in range(epi_len - 1, -1, -1):
+                    if dones[i]:
+                        self.y_[k][i] = rewards[i]
+                    else:
+                        self.q_tilde[k][i, self.actions[i + 1]] = self.betas[k] * self.y_[k][i + 1] \
+                                                                  + (1 - self.betas[k]) * self.q_tilde[k][
+                                                                      i, self.actions[i + 1]]
+                        self.y_[k][i] = rewards[i] + gamma * self.q_tilde[k][i, :].max()
 
-            self.batch_count = 1
+                self.batch_count = 1
 
-            self.opt.zero_grad()
-            q_vals = model(self.states[: batch_size])
+                self.opts[k].zero_grad()
+                # TODO: does q_vals need to be a list too? for multi-threading. and also actions_one_hot, fix it in
+                #  'else' too
+                q_vals = models[k](self.states[: batch_size])
 
-            actions_one_hot = F.one_hot(self.actions[: batch_size], num_classes=num_actions)
-            q_vals = (q_vals * actions_one_hot).sum(-1)
+                actions_one_hot = F.one_hot(self.actions[: batch_size], num_classes=num_actions)
+                q_vals = (q_vals * actions_one_hot).sum(-1)
 
-            loss = self.criterion(self.y_[:batch_size], q_vals)
-            loss.backward()
-            self.opt.step()
-            return loss.detach().item()
+                loss = self.criterion(self.y_[k][:batch_size], q_vals)
+                loss.backward()
+                self.opts[k].step()
+
+            # FIXME: return loss list
+            return None
 
         else:
-            self.opt.zero_grad()
-            s = self.batch_count * batch_size
-            f = (self.batch_count + 1) * batch_size
-            q_vals = model(self.states[s: f])
+            for k in range(self.K):
+                self.opts[k].zero_grad()
+                s = self.batch_count * batch_size
+                f = (self.batch_count + 1) * batch_size
+                q_vals = models[k](self.states[s: f])
 
-            actions_one_hot = F.one_hot(self.actions[s: f], num_classes=num_actions)
-            q_vals = (q_vals * actions_one_hot).sum(-1)
+                actions_one_hot = F.one_hot(self.actions[s: f], num_classes=num_actions)
+                q_vals = (q_vals * actions_one_hot).sum(-1)
 
-            loss = self.criterion(self.y_[s: f], q_vals)
-            loss.backward()
-            self.opt.step()
+                loss = self.criterion(self.y_[k][s: f], q_vals)
+                loss.backward()
+                self.opts[k].step()
 
-            self.batch_count += 1
+                self.batch_count += 1
 
-            return loss.detach().item()
+            # FIXME: return loss list
+            return None
