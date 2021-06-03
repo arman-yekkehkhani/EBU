@@ -49,7 +49,6 @@ class EbuTrainer:
                                                                       i, self.actions[i + 1]]
                         self.y_[k][i] = rewards[i] + gamma * self.q_tilde[k][i, :].max()
 
-                self.batch_count = 1
 
                 self.opts[k].zero_grad()
                 # TODO: does q_vals need to be a list too? for multi-threading. and also actions_one_hot, fix it in
@@ -63,14 +62,17 @@ class EbuTrainer:
                 loss.backward()
                 self.opts[k].step()
 
+            self.batch_count = 1
+
             # FIXME: return loss list
             return None
 
         else:
+            s = self.batch_count * batch_size
+            f = (self.batch_count + 1) * batch_size
+
             for k in range(self.K):
                 self.opts[k].zero_grad()
-                s = self.batch_count * batch_size
-                f = (self.batch_count + 1) * batch_size
                 q_vals = models[k](self.states[s: f])
 
                 actions_one_hot = F.one_hot(self.actions[s: f], num_classes=num_actions)
@@ -80,7 +82,7 @@ class EbuTrainer:
                 loss.backward()
                 self.opts[k].step()
 
-                self.batch_count += 1
+            self.batch_count += 1
 
             # FIXME: return loss list
             return None
