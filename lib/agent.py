@@ -15,11 +15,10 @@ class Agent:
         self.test_env = test_env
         self.exp_buffer = exp_buffer
         self._reset()
-        self.episode = 0
+        self.total_reward = 0.0
 
     def _reset(self):
         self.state = self.env.reset()
-        self.total_reward = 0.0
 
     @torch.no_grad()
     def play_step(self, nets: list, train_scores: list, epsilon=0.0, device="cpu"):
@@ -57,9 +56,13 @@ class Agent:
 
         # TODO: not compatible with episodic env_life!
         if is_done:
+            self._reset()
+
+        if self.env.was_real_done:
             self.episode += 1
             done_reward = self.total_reward
-            self._reset()
+            self.total_reward = 0.0
+
         return done_reward
 
     @torch.no_grad()
