@@ -55,6 +55,7 @@ if __name__ == "__main__":
     print(device)
 
     env = wrappers.make_env(args.env)
+    test_env = wrappers.make_env(args.env)
     env.seed(123)
 
     method = args.method
@@ -86,7 +87,7 @@ if __name__ == "__main__":
     betas = np.linspace(0, 1, K)
 
     buffer = ExperienceBuffer(REPLAY_SIZE)
-    agent = Agent(env, buffer)
+    agent = Agent(env, test_env, buffer)
     epsilon = EPSILON_START
 
     optimizers = [optim.Adam(nets[i].parameters(), lr=LEARNING_RATE) for i in range(K)]
@@ -119,8 +120,6 @@ if __name__ == "__main__":
                            'reward 100': mean_reward,
                            'reward': reward}, step=frame_idx)
 
-            print(train_scores)
-
         if len(buffer) < REPLAY_START_SIZE:
             continue
 
@@ -140,8 +139,16 @@ if __name__ == "__main__":
 
         if frame_idx % SYNC_K_NETS == 0 and method == 'ebu':
             best_i = np.argmax(train_scores)
-            wandb.log({'best_beta': best_i}, step=frame_idx)
+            if args.log:
+                wandb.log({'best_beta': best_i}, step=frame_idx)
             for i in range(K):
                 nets[i].load_state_dict(nets[best_i].state_dict())
                 tgt_nets[i].load_state_dict(tgt_nets[best_i].state_dict())
             train_scores = [0 for i in range(K)]
+
+        if frame_idx % TEST_AGENT == 0:
+            model = dqn_model.DQN(env.observation_space.shape, env.action_space.n).to(device)
+            test_score = agent.play_test_episode(model, device=device)
+            if args.log:
+                wandb.log({'test_score': test_score}, step=frame_idx)
+            del model

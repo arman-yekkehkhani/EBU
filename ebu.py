@@ -17,7 +17,6 @@ class EbuTrainer:
         self.K = len(betas)
 
     def ebu_train_step(self, models, tgts, num_actions, rb, batch_size, device, gamma=0.99):
-        # TODO: no beta here!
         if self.batch_num == self.batch_count:
 
             self.batch_num, self.states, self.actions, rewards, dones, next_states = rb.sample_episode(batch_size)
