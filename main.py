@@ -19,7 +19,7 @@ from lib import wrappers
 from lib.agent import Agent
 from lib.replay_buffer import ExperienceBuffer
 
-DEFAULT_ENV_NAME = "PongNoFrameskip-v4"
+DEFAULT_ENV_NAME = "BreakoutNoFrameskip-v4"
 DEFAULT_TOTAL_STEPS = 20_000_000
 BETA = 0.5
 METHOD = 'dqn'
@@ -149,6 +149,7 @@ if __name__ == "__main__":
 
         if frame_idx % TEST_AGENT == 0:
             model = dqn_model.DQN(env.observation_space.shape, env.action_space.n).to(device)
+            model.load_state_dict(nets[best_i].state_dict())
             test_score = agent.play_test_episode(model, device=device)
             if args.log:
                 wandb.log({'test_score': test_score}, step=frame_idx)

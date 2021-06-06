@@ -16,6 +16,7 @@ class Agent:
         self.exp_buffer = exp_buffer
         self._reset()
         self.total_reward = 0.0
+        self.episode = 0
 
     def _reset(self):
         self.state = self.env.reset()
@@ -31,7 +32,7 @@ class Agent:
         """
         done_reward = None
 
-        # TODO: not compatible with EpisodicLifeEnv!
+        # TODO: assumes using a net for a really full episode
         i = self.episode % len(nets)
         net = nets[i]
 
@@ -54,7 +55,6 @@ class Agent:
         self.exp_buffer.append(exp)
         self.state = new_state
 
-        # TODO: not compatible with episodic env_life!
         if is_done:
             self._reset()
 
@@ -85,11 +85,12 @@ class Agent:
                     action = int(act_v.item())
 
                 # do step in the test environment
-                # TODO: not compatible with episodicLifeEnv
-                new_state, reward, is_done, _ = self.test_env.step(action)
+                new_state, reward, _, _ = self.test_env.step(action)
+                is_done = self.test_env.was_real_done
                 epi_reward += reward
 
                 state = new_state
+                frame_idx += 1
 
             scores.append(epi_reward)
 
