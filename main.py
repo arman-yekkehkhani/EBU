@@ -21,7 +21,6 @@ from lib.replay_buffer import ExperienceBuffer
 
 DEFAULT_ENV_NAME = "BreakoutNoFrameskip-v4"
 DEFAULT_TOTAL_STEPS = 20_000_000
-BETA = 0.5
 METHOD = 'dqn'
 
 GAMMA = 0.99
@@ -47,7 +46,7 @@ if __name__ == "__main__":
                         help="total steps of training")
     parser.add_argument("--method", type=str, default=METHOD,
                         help="Methods: dqn(default) or ebu")
-    parser.add_argument("--beta", type=float, default=BETA, help="Diffusion factor")
+    parser.add_argument("--beta", type=float, default=0.5, help="Diffusion factor")
     parser.add_argument("--log", type=util.strtobool, default=True, help="log training process in wandb")
     parser.add_argument("--k", type=int, default=1, help="number of betas")
 
@@ -62,12 +61,11 @@ if __name__ == "__main__":
     method = args.method
     print(args.env)
     print(method)
-    if args.beta:
-        BETA = args.beta
 
     if args.log:
         wandb.init(project=args.env, name=method, config={"gamma": GAMMA,
-                                                          "beta": BETA,
+                                                          "beta": args.beta,
+                                                          "k": args.k,
                                                           "batch size": BATCH_SIZE,
                                                           "replay size": REPLAY_SIZE,
                                                           "replay start size": REPLAY_START_SIZE,
@@ -85,7 +83,11 @@ if __name__ == "__main__":
     print(nets[0])
 
     train_scores = [0 for i in range(K)]
-    betas = np.linspace(0, 1, K)
+
+    if K != 1:
+        betas = np.linspace(0, 1, K)
+    else:
+        betas = [args.beta]
 
     buffer = ExperienceBuffer(REPLAY_SIZE)
     agent = Agent(env, test_env, buffer)
